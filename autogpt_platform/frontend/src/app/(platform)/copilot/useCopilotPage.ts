@@ -208,8 +208,13 @@ export function useCopilotPage() {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
       });
-      // Allow re-resume if the backend task is still running.
-      hasResumedRef.current = null;
+      // Only allow re-resume on error (SSE drop without clean finish).
+      // On clean finish (status === "ready"), the backend task is done —
+      // resetting the ref would allow a spurious resume if the session
+      // refetch races with mark_task_completed (SECRT-2021).
+      if (status === "error") {
+        hasResumedRef.current = null;
+      }
     }
   }, [status, sessionId, queryClient]);
 

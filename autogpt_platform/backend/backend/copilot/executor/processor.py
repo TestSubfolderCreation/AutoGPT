@@ -257,10 +257,21 @@ class CoPilotProcessor:
                     cluster_lock.refresh()
                     last_refresh = current_time
 
+                # Intercept StreamFinish: don't publish it directly.
+                # mark_task_completed atomically sets status to "completed"
+                # and THEN publishes StreamFinish.  Publishing StreamFinish
+                # before the status update causes a race where the frontend
+                # sees the stream as finished but the task is still "running",
+                # triggering a spurious resume that replays the entire stream
+                # (double output bug — SECRT-2021).
+                if isinstance(chunk, StreamFinish):
+                    break
+
                 # Publish chunk to stream registry
                 await stream_registry.publish_chunk(entry.task_id, chunk)
 
-            # Mark task as completed
+            # Mark task as completed — this publishes StreamFinish AFTER
+            # atomically setting status to "completed", preventing the race.
             await stream_registry.mark_task_completed(entry.task_id, status="completed")
             log.info("Task completed successfully")
 
